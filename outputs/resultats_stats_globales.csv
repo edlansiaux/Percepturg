@@ -1,0 +1,5 @@
+Variable,N,Moyenne,ET,Mediane,Q1,Q3,Min,Max,Erreur_Standard,IC95_Inf,IC95_Sup
+Perception_Actu_Exercice,141,4.39,2.17,5,3,6,0,9,0.18,4.03,4.75
+Perception_Actu_Specialite,141,4.22,2.1,4,3,6,0,8,0.18,3.87,4.57
+Perception_Fut_Exercice,141,4.4,2.59,4,2,6,0,10,0.22,3.97,4.84
+Perception_Fut_Specialite,141,4.3,2.56,4,2,6,0,10,0.22,3.87,4.72
