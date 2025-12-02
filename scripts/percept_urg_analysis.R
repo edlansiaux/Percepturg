@@ -437,30 +437,189 @@ cat("5. CHARGEMENT DU LEXIQUE FEEL (French Expanded Emotion Lexicon)\n")
 cat("================================================================================\n\n")
 
 cat("⚠️  INSTRUCTIONS CRITIQUES:\n")
-cat("   Téléchargez FEEL.csv depuis: http://advanse.lirmm.fr/feel.php\n")
+cat("   Option 1: Téléchargez FEEL.csv depuis: http://advanse.lirmm.fr/feel.php\n")
+cat("   Option 2: Installez le package rfeel: devtools::install_github('ColinFay/rfeel')\n")
 cat("   Placez le fichier dans le répertoire de travail R\n\n")
 
-# Vérification de l'existence de FEEL.csv
-if (!file.exists("FEEL.csv")) {
-  stop("❌ ERREUR: Le fichier 'FEEL.csv' est introuvable.\n",
-       "   Téléchargez-le depuis: http://advanse.lirmm.fr/feel.php\n",
-       "   Placez-le dans le répertoire: ", getwd())
+# ------------------------------------------------------------------------------
+# 5.1. Tentative de chargement de FEEL depuis différentes sources
+# ------------------------------------------------------------------------------
+
+feel_raw <- NULL
+feel_source <- NULL
+
+# Méthode 1: Chargement depuis FEEL.csv (fichier téléchargé)
+if (file.exists("FEEL.csv")) {
+  cat("Tentative de chargement depuis FEEL.csv...\n")
+  
+  # Essai avec différents séparateurs
+  tryCatch({
+    feel_raw <- read_csv("FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+    feel_source <- "FEEL.csv (virgule)"
+    cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: virgule)\n")
+  }, error = function(e) {
+    tryCatch({
+      feel_raw <<- read_csv2("FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+      feel_source <<- "FEEL.csv (point-virgule)"
+      cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: point-virgule)\n")
+    }, error = function(e2) {
+      tryCatch({
+        feel_raw <<- read_delim("FEEL.csv", delim = "\t", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+        feel_source <<- "FEEL.csv (tabulation)"
+        cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: tabulation)\n")
+      }, error = function(e3) {
+        cat("⚠️  Échec du chargement depuis FEEL.csv\n")
+      })
+    })
+  })
 }
 
-# Chargement de FEEL
-feel_raw <- read_csv("~\data\FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
-
-cat("✓ Lexique FEEL chargé:", nrow(feel_raw), "mots français\n")
-
-# Vérification de la structure de FEEL
-expected_cols <- c("word", "polarity", "anger", "anticipation", "disgust", 
-                   "fear", "joy", "sadness", "surprise", "trust")
-missing_cols <- setdiff(expected_cols, names(feel_raw))
-
-if (length(missing_cols) > 0) {
-  stop("❌ ERREUR: Colonnes manquantes dans FEEL.csv: ", paste(missing_cols, collapse = ", "), "\n",
-       "   Structure attendue: word, polarity, anger, anticipation, disgust, fear, joy, sadness, surprise, trust")
+# Méthode 2: Chargement depuis le package rfeel
+if (is.null(feel_raw)) {
+  cat("Tentative de chargement depuis le package rfeel...\n")
+  
+  if (require("rfeel", quietly = TRUE)) {
+    tryCatch({
+      # rfeel contient deux datasets: feel_fr (avec polarity) et feel_score
+      data("feel_fr", package = "rfeel", envir = environment())
+      feel_raw <- feel_fr
+      feel_source <- "Package rfeel"
+      cat("✓ Lexique FEEL chargé depuis le package rfeel\n")
+    }, error = function(e) {
+      cat("⚠️  Échec du chargement depuis rfeel\n")
+    })
+  } else {
+    cat("⚠️  Package rfeel non installé. Installez-le avec:\n")
+    cat("   devtools::install_github('ColinFay/rfeel')\n")
+  }
 }
+
+# Vérification finale
+if (is.null(feel_raw)) {
+  stop("❌ ERREUR: Impossible de charger le lexique FEEL.\n\n",
+       "Solutions:\n",
+       "1. Téléchargez FEEL.csv depuis: http://advanse.lirmm.fr/feel.php\n",
+       "   Placez-le dans: ", getwd(), "\n\n",
+       "2. Installez le package rfeel:\n",
+       "   install.packages('devtools')\n",
+       "   devtools::install_github('ColinFay/rfeel')\n\n",
+       "3. Utilisez le lexique simplifié intégré (voir section alternative ci-dessous)")
+}
+
+cat("\n✓ Lexique FEEL chargé:", nrow(feel_raw), "entrées\n")
+cat("  Source:", feel_source, "\n")
+
+# ------------------------------------------------------------------------------
+# 5.2. Détection et adaptation de la structure de FEEL
+# ------------------------------------------------------------------------------
+
+cat("\nDétection de la structure du lexique...\n")
+cat("Colonnes disponibles:", paste(names(feel_raw), collapse = ", "), "\n\n")
+
+# Liste des noms de colonnes possibles (avec variantes)
+possible_word_cols <- c("word", "mot", "term", "terme", "X1", "V1")
+possible_polarity_cols <- c("polarity", "polarite", "sentiment", "X2", "V2")
+possible_emotion_cols <- list(
+  anger = c("anger", "colere", "colère", "angry"),
+  anticipation = c("anticipation"),
+  disgust = c("disgust", "degout", "dégoût"),
+  fear = c("fear", "peur", "afraid"),
+  joy = c("joy", "joie", "happy"),
+  sadness = c("sadness", "tristesse", "sad"),
+  surprise = c("surprise"),
+  trust = c("trust", "confiance")
+)
+
+# Fonction pour trouver une colonne
+find_column <- function(df, possible_names) {
+  for (name in possible_names) {
+    if (name %in% names(df)) {
+      return(name)
+    }
+  }
+  return(NULL)
+}
+
+# Détection des colonnes
+word_col <- find_column(feel_raw, possible_word_cols)
+polarity_col <- find_column(feel_raw, possible_polarity_cols)
+
+emotion_cols <- list()
+for (emotion in names(possible_emotion_cols)) {
+  col <- find_column(feel_raw, possible_emotion_cols[[emotion]])
+  if (!is.null(col)) {
+    emotion_cols[[emotion]] <- col
+  }
+}
+
+# Affichage de la détection
+cat("Colonnes détectées:\n")
+cat("  - Mot:", ifelse(is.null(word_col), "NON TROUVÉE", word_col), "\n")
+cat("  - Polarité:", ifelse(is.null(polarity_col), "NON TROUVÉE", polarity_col), "\n")
+cat("  - Émotions:", length(emotion_cols), "/8\n")
+
+# Vérification minimale
+if (is.null(word_col)) {
+  # Si aucune colonne "word" n'est trouvée, on prend la première colonne
+  word_col <- names(feel_raw)[1]
+  cat("\n⚠️  Colonne 'word' non trouvée, utilisation de la première colonne:", word_col, "\n")
+}
+
+# Standardisation des noms de colonnes
+feel_standardized <- feel_raw
+
+# Renommer la colonne des mots
+if (word_col != "word") {
+  names(feel_standardized)[names(feel_standardized) == word_col] <- "word"
+}
+
+# Renommer la colonne de polarité
+if (!is.null(polarity_col) && polarity_col != "polarity") {
+  names(feel_standardized)[names(feel_standardized) == polarity_col] <- "polarity"
+}
+
+# Renommer les colonnes d'émotions
+for (emotion in names(emotion_cols)) {
+  old_name <- emotion_cols[[emotion]]
+  if (old_name != emotion) {
+    names(feel_standardized)[names(feel_standardized) == old_name] <- emotion
+  }
+}
+
+# Si les colonnes d'émotions sont manquantes, créer des colonnes vides
+required_emotions <- c("anger", "anticipation", "disgust", "fear", "joy", "sadness", "surprise", "trust")
+for (emotion in required_emotions) {
+  if (!emotion %in% names(feel_standardized)) {
+    feel_standardized[[emotion]] <- 0
+    cat("⚠️  Colonne '", emotion, "' créée avec valeurs par défaut (0)\n", sep = "")
+  }
+}
+
+# Si la colonne polarity est manquante
+if (!"polarity" %in% names(feel_standardized)) {
+  cat("⚠️  Colonne 'polarity' manquante, création basée sur les émotions...\n")
+  
+  feel_standardized <- feel_standardized %>%
+    mutate(
+      score_positive = joy + trust + anticipation,
+      score_negative = anger + fear + disgust + sadness,
+      polarity = case_when(
+        score_positive > score_negative ~ "positive",
+        score_negative > score_positive ~ "negative",
+        TRUE ~ "neutral"
+      )
+    ) %>%
+    select(-score_positive, -score_negative)
+}
+
+# Nettoyage final
+feel_raw <- feel_standardized %>%
+  select(word, polarity, all_of(required_emotions)) %>%
+  filter(!is.na(word) & word != "")
+
+cat("\n✓ Structure standardisée:\n")
+cat("  - ", nrow(feel_raw), " mots\n")
+cat("  - Colonnes: ", paste(names(feel_raw), collapse = ", "), "\n\n")
 
 # ------------------------------------------------------------------------------
 # 5.1. Préparation de FEEL pour l'Analyse BING (Polarité: Positif/Négatif)
@@ -485,26 +644,29 @@ cat("  - Mots négatifs:", sum(french_bing_lexicon$sentiment == "negative"), "\n
 
 cat("--- 5.2. PRÉPARATION POUR ANALYSE NRC (Émotions) ---\n")
 
-# Transformation au format long (une ligne par mot-émotion)
-french_nrc_lexicon <- feel_raw %>%
+# Séparation en deux parties pour éviter le conflit de types
+
+# Partie 1 : Polarités (character)
+nrc_polarity <- feel_raw %>%
+  select(word, polarity) %>%
+  filter(!is.na(polarity) & polarity != "") %>%
+  rename(sentiment = polarity) %>%
+  mutate(sentiment = tolower(sentiment)) %>%
+  filter(sentiment %in% c("positive", "negative"))
+
+# Partie 2 : Émotions (numeric)
+nrc_emotions <- feel_raw %>%
+  select(word, anger, anticipation, disgust, fear, joy, sadness, surprise, trust) %>%
   pivot_longer(
-    cols = c(polarity, anger, anticipation, disgust, fear, joy, sadness, surprise, trust),
+    cols = c(anger, anticipation, disgust, fear, joy, sadness, surprise, trust),
     names_to = "sentiment",
     values_to = "value"
   ) %>%
-  filter(!is.na(value)) %>%
-  filter(
-    (sentiment == "polarity" & value %in% c("positive", "negative")) |
-    (sentiment != "polarity" & value == 1)
-  ) %>%
-  mutate(
-    sentiment = case_when(
-      sentiment == "polarity" & value == "positive" ~ "positive",
-      sentiment == "polarity" & value == "negative" ~ "negative",
-      TRUE ~ sentiment
-    )
-  ) %>%
-  select(word, sentiment) %>%
+  filter(!is.na(value) & value == 1) %>%
+  select(word, sentiment)
+
+# Combinaison des deux parties
+french_nrc_lexicon <- bind_rows(nrc_polarity, nrc_emotions) %>%
   distinct()
 
 cat("✓ Lexique NRC (émotions) créé:\n")
@@ -1290,5 +1452,11 @@ cat("===========================================================================
 
 cat("Pour toute question sur la méthodologie ou l'interprétation des résultats,\n")
 cat("veuillez consulter le protocole expérimental PERCEPT'urg.\n\n")
+
+cat("Prochaines étapes suggérées:\n")
+cat("1. Vérifier la qualité des résultats\n")
+cat("2. Réaliser la double lecture humaine\n")
+cat("3. Rédiger le manuscrit pour publication\n")
+cat("4. Préparer les présentations (Urgences 2026, EUSEM)\n\n")
 
 # Fin du script
