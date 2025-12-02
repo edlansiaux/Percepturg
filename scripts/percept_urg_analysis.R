@@ -158,9 +158,9 @@ plot_perceptions <- ggplot(stats_globales, aes(x = Variable, y = Moyenne)) +
   geom_errorbar(aes(ymin = IC95_Inf, ymax = IC95_Sup), width = 0.2) +
   geom_text(aes(label = round(Moyenne, 1)), vjust = -0.5, size = 4) +
   scale_x_discrete(labels = c("Perception\nActuelle\nSpécialité",
-                               "Perception\nFuture\nSpécialité",
-                               "Perception\nActuelle\nExercice",
-                               "Perception\nFuture\nExercice")) +
+                              "Perception\nFuture\nSpécialité",
+                              "Perception\nActuelle\nExercice",
+                              "Perception\nFuture\nExercice")) +
   ylim(0, 10) +
   labs(title = "Perceptions de la Médecine d'Urgence (Moyenne ± IC95%)",
        subtitle = "Échelle de Likert: 0 = médiocre, 10 = excellent",
@@ -247,7 +247,7 @@ analyse_comparative <- function(data, score_var, group_var) {
     if (est_normal && (is.na(homogeneite) || homogeneite > 0.05)) {
       # t de Student
       test_result <- t.test(as.formula(paste(score_var, "~", group_var)), 
-                           data = df_analyse, var.equal = TRUE)
+                            data = df_analyse, var.equal = TRUE)
       resultat <- tibble(
         Score_Var = score_var,
         Group_Var = group_var,
@@ -273,7 +273,7 @@ analyse_comparative <- function(data, score_var, group_var) {
     if (est_normal && (is.na(homogeneite) || homogeneite > 0.05)) {
       # ANOVA
       anova_result <- aov(as.formula(paste(score_var, "~", group_var)), 
-                         data = df_analyse)
+                          data = df_analyse)
       anova_summary <- summary(anova_result)
       resultat <- tibble(
         Score_Var = score_var,
@@ -429,197 +429,112 @@ cat("✓ Tokens nettoyés:", nrow(tokens_clean), "mots\n")
 cat("✓ Vocabulaire unique:", n_distinct(tokens_clean$word), "mots distincts\n\n")
 
 # ==============================================================================
-# 5. CHARGEMENT ET PRÉPARATION DU LEXIQUE FEEL
+# 5. CHARGEMENT ET PRÉPARATION DU LEXIQUE FEEL (VERSION CORRIGÉE ET ROBUSTE)
 # ==============================================================================
 
 cat("================================================================================\n")
 cat("5. CHARGEMENT DU LEXIQUE FEEL (French Expanded Emotion Lexicon)\n")
 cat("================================================================================\n\n")
 
-cat("⚠️  INSTRUCTIONS CRITIQUES:\n")
-cat("   Option 1: Téléchargez FEEL.csv depuis: http://advanse.lirmm.fr/feel.php\n")
-cat("   Option 2: Installez le package rfeel: devtools::install_github('ColinFay/rfeel')\n")
-cat("   Placez le fichier dans le répertoire de travail R\n\n")
-
-# ------------------------------------------------------------------------------
-# 5.1. Tentative de chargement de FEEL depuis différentes sources
-# ------------------------------------------------------------------------------
-
 feel_raw <- NULL
 feel_source <- NULL
 
-# Méthode 1: Chargement depuis FEEL.csv (fichier téléchargé)
-if (file.exists("FEEL.csv")) {
-  cat("Tentative de chargement depuis FEEL.csv...\n")
-  
-  # Essai avec différents séparateurs
-  tryCatch({
-    feel_raw <- read_csv("FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
-    feel_source <- "FEEL.csv (virgule)"
-    cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: virgule)\n")
-  }, error = function(e) {
-    tryCatch({
-      feel_raw <<- read_csv2("FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
-      feel_source <<- "FEEL.csv (point-virgule)"
-      cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: point-virgule)\n")
-    }, error = function(e2) {
-      tryCatch({
-        feel_raw <<- read_delim("FEEL.csv", delim = "\t", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
-        feel_source <<- "FEEL.csv (tabulation)"
-        cat("✓ Chargé avec succès depuis FEEL.csv (séparateur: tabulation)\n")
-      }, error = function(e3) {
-        cat("⚠️  Échec du chargement depuis FEEL.csv\n")
-      })
-    })
-  })
+# Vérification de l'existence du fichier
+if (!file.exists("FEEL.csv")) {
+  stop("❌ ERREUR: Le fichier 'FEEL.csv' est introuvable. Veuillez le placer dans le dossier de travail.")
 }
 
-# Méthode 2: Chargement depuis le package rfeel
-if (is.null(feel_raw)) {
-  cat("Tentative de chargement depuis le package rfeel...\n")
-  
-  if (require("rfeel", quietly = TRUE)) {
-    tryCatch({
-      # rfeel contient deux datasets: feel_fr (avec polarity) et feel_score
-      data("feel_fr", package = "rfeel", envir = environment())
-      feel_raw <- feel_fr
-      feel_source <- "Package rfeel"
-      cat("✓ Lexique FEEL chargé depuis le package rfeel\n")
-    }, error = function(e) {
-      cat("⚠️  Échec du chargement depuis rfeel\n")
-    })
-  } else {
-    cat("⚠️  Package rfeel non installé. Installez-le avec:\n")
-    cat("   devtools::install_github('ColinFay/rfeel')\n")
+# TENTATIVE DE CHARGEMENT INTELLIGENT
+cat("Tentative de chargement et détection du séparateur pour FEEL.csv...\n")
+
+# 1. Essai avec point-virgule (format standard FEEL)
+tryCatch({
+  temp_feel <- read_delim("FEEL.csv", delim = ";", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+  if (ncol(temp_feel) > 2) {
+    feel_raw <- temp_feel
+    feel_source <- "FEEL.csv (point-virgule)"
+    cat("✓ Chargé avec succès (séparateur: point-virgule)\n")
   }
+}, error = function(e) {})
+
+# 2. Essai avec virgule (si le point-virgule a échoué ou donné 1 colonne)
+if (is.null(feel_raw) || ncol(feel_raw) < 2) {
+  tryCatch({
+    temp_feel <- read_csv("FEEL.csv", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+    if (ncol(temp_feel) > 2) {
+      feel_raw <- temp_feel
+      feel_source <- "FEEL.csv (virgule)"
+      cat("✓ Chargé avec succès (séparateur: virgule)\n")
+    }
+  }, error = function(e) {})
 }
 
-# Vérification finale
-if (is.null(feel_raw)) {
-  stop("❌ ERREUR: Impossible de charger le lexique FEEL.\n\n",
-       "Solutions:\n",
-       "1. Téléchargez FEEL.csv depuis: http://advanse.lirmm.fr/feel.php\n",
-       "   Placez-le dans: ", getwd(), "\n\n",
-       "2. Installez le package rfeel:\n",
-       "   install.packages('devtools')\n",
-       "   devtools::install_github('ColinFay/rfeel')\n\n",
-       "3. Utilisez le lexique simplifié intégré (voir section alternative ci-dessous)")
+# 3. Essai avec tabulation
+if (is.null(feel_raw) || ncol(feel_raw) < 2) {
+  tryCatch({
+    temp_feel <- read_delim("FEEL.csv", delim = "\t", locale = locale(encoding = "UTF-8"), show_col_types = FALSE)
+    if (ncol(temp_feel) > 2) {
+      feel_raw <- temp_feel
+      feel_source <- "FEEL.csv (tabulation)"
+      cat("✓ Chargé avec succès (séparateur: tabulation)\n")
+    }
+  }, error = function(e) {})
 }
 
-cat("\n✓ Lexique FEEL chargé:", nrow(feel_raw), "entrées\n")
-cat("  Source:", feel_source, "\n")
+# Vérification finale du chargement
+if (is.null(feel_raw) || ncol(feel_raw) < 2) {
+  stop("❌ ERREUR CRITIQUE: Impossible de lire correctement la structure de FEEL.csv.\n",
+       "   Assurez-vous que le fichier contient des délimiteurs (;, ou tabulation) corrects.")
+}
 
-# ------------------------------------------------------------------------------
-# 5.2. Détection et adaptation de la structure de FEEL
-# ------------------------------------------------------------------------------
+# Nettoyage des noms de colonnes (suppression espaces, mise en minuscule)
+names(feel_raw) <- tolower(trimws(names(feel_raw)))
 
-cat("\nDétection de la structure du lexique...\n")
-cat("Colonnes disponibles:", paste(names(feel_raw), collapse = ", "), "\n\n")
+# Identification des colonnes
+col_names <- names(feel_raw)
+word_col <- col_names[grepl("word|mot|term", col_names)][1]
+if (is.na(word_col)) word_col <- col_names[2] # Fallback souvent la 2eme colonne dans FEEL brut
 
-# Liste des noms de colonnes possibles (avec variantes)
-possible_word_cols <- c("word", "mot", "term", "terme", "X1", "V1")
-possible_polarity_cols <- c("polarity", "polarite", "sentiment", "X2", "V2")
-possible_emotion_cols <- list(
-  anger = c("anger", "colere", "colère", "angry"),
+polarity_col <- col_names[grepl("polarity|polarite|sentiment", col_names)][1]
+
+# Mapping des émotions
+emotion_map <- list(
+  anger = c("anger", "colere", "colère"),
   anticipation = c("anticipation"),
   disgust = c("disgust", "degout", "dégoût"),
-  fear = c("fear", "peur", "afraid"),
-  joy = c("joy", "joie", "happy"),
-  sadness = c("sadness", "tristesse", "sad"),
+  fear = c("fear", "peur"),
+  joy = c("joy", "joie"),
+  sadness = c("sadness", "tristesse"),
   surprise = c("surprise"),
   trust = c("trust", "confiance")
 )
 
-# Fonction pour trouver une colonne
-find_column <- function(df, possible_names) {
-  for (name in possible_names) {
-    if (name %in% names(df)) {
-      return(name)
-    }
-  }
-  return(NULL)
-}
+# Renommage standardisé
+feel_clean <- feel_raw
+names(feel_clean)[names(feel_clean) == word_col] <- "word"
+if (!is.na(polarity_col)) names(feel_clean)[names(feel_clean) == polarity_col] <- "polarity"
 
-# Détection des colonnes
-word_col <- find_column(feel_raw, possible_word_cols)
-polarity_col <- find_column(feel_raw, possible_polarity_cols)
-
-emotion_cols <- list()
-for (emotion in names(possible_emotion_cols)) {
-  col <- find_column(feel_raw, possible_emotion_cols[[emotion]])
-  if (!is.null(col)) {
-    emotion_cols[[emotion]] <- col
+# Renommage des émotions
+for (emo in names(emotion_map)) {
+  found <- intersect(names(feel_clean), emotion_map[[emo]])
+  if (length(found) > 0) {
+    names(feel_clean)[names(feel_clean) == found[1]] <- emo
+  } else {
+    # Création colonne vide si manquante
+    feel_clean[[emo]] <- 0 
   }
 }
 
-# Affichage de la détection
-cat("Colonnes détectées:\n")
-cat("  - Mot:", ifelse(is.null(word_col), "NON TROUVÉE", word_col), "\n")
-cat("  - Polarité:", ifelse(is.null(polarity_col), "NON TROUVÉE", polarity_col), "\n")
-cat("  - Émotions:", length(emotion_cols), "/8\n")
+# Sélection finale des colonnes utiles
+required_cols <- c("word", "polarity", names(emotion_map))
+feel_raw <- feel_clean %>%
+  select(any_of(required_cols)) %>%
+  filter(!is.na(word) & word != "") %>%
+  distinct(word, .keep_all = TRUE)
 
-# Vérification minimale
-if (is.null(word_col)) {
-  # Si aucune colonne "word" n'est trouvée, on prend la première colonne
-  word_col <- names(feel_raw)[1]
-  cat("\n⚠️  Colonne 'word' non trouvée, utilisation de la première colonne:", word_col, "\n")
-}
-
-# Standardisation des noms de colonnes
-feel_standardized <- feel_raw
-
-# Renommer la colonne des mots
-if (word_col != "word") {
-  names(feel_standardized)[names(feel_standardized) == word_col] <- "word"
-}
-
-# Renommer la colonne de polarité
-if (!is.null(polarity_col) && polarity_col != "polarity") {
-  names(feel_standardized)[names(feel_standardized) == polarity_col] <- "polarity"
-}
-
-# Renommer les colonnes d'émotions
-for (emotion in names(emotion_cols)) {
-  old_name <- emotion_cols[[emotion]]
-  if (old_name != emotion) {
-    names(feel_standardized)[names(feel_standardized) == old_name] <- emotion
-  }
-}
-
-# Si les colonnes d'émotions sont manquantes, créer des colonnes vides
-required_emotions <- c("anger", "anticipation", "disgust", "fear", "joy", "sadness", "surprise", "trust")
-for (emotion in required_emotions) {
-  if (!emotion %in% names(feel_standardized)) {
-    feel_standardized[[emotion]] <- 0
-    cat("⚠️  Colonne '", emotion, "' créée avec valeurs par défaut (0)\n", sep = "")
-  }
-}
-
-# Si la colonne polarity est manquante
-if (!"polarity" %in% names(feel_standardized)) {
-  cat("⚠️  Colonne 'polarity' manquante, création basée sur les émotions...\n")
-  
-  feel_standardized <- feel_standardized %>%
-    mutate(
-      score_positive = joy + trust + anticipation,
-      score_negative = anger + fear + disgust + sadness,
-      polarity = case_when(
-        score_positive > score_negative ~ "positive",
-        score_negative > score_positive ~ "negative",
-        TRUE ~ "neutral"
-      )
-    ) %>%
-    select(-score_positive, -score_negative)
-}
-
-# Nettoyage final
-feel_raw <- feel_standardized %>%
-  select(word, polarity, all_of(required_emotions)) %>%
-  filter(!is.na(word) & word != "")
-
-cat("\n✓ Structure standardisée:\n")
-cat("  - ", nrow(feel_raw), " mots\n")
-cat("  - Colonnes: ", paste(names(feel_raw), collapse = ", "), "\n\n")
+cat("\n✓ Lexique FEEL standardisé:\n")
+cat("  - Mots:", nrow(feel_raw), "\n")
+cat("  - Colonnes:", paste(names(feel_raw), collapse = ", "), "\n\n")
 
 # ------------------------------------------------------------------------------
 # 5.1. Préparation de FEEL pour l'Analyse BING (Polarité: Positif/Négatif)
@@ -627,16 +542,21 @@ cat("  - Colonnes: ", paste(names(feel_raw), collapse = ", "), "\n\n")
 
 cat("\n--- 5.1. PRÉPARATION POUR ANALYSE BING (Polarité) ---\n")
 
-french_bing_lexicon <- feel_raw %>%
-  select(word, polarity) %>%
-  filter(!is.na(polarity) & polarity != "") %>%
-  rename(sentiment = polarity) %>%
-  mutate(sentiment = tolower(sentiment)) %>%
-  filter(sentiment %in% c("positive", "negative"))
-
-cat("✓ Lexique BING (polarité) créé:\n")
-cat("  - Mots positifs:", sum(french_bing_lexicon$sentiment == "positive"), "\n")
-cat("  - Mots négatifs:", sum(french_bing_lexicon$sentiment == "negative"), "\n\n")
+if ("polarity" %in% names(feel_raw)) {
+  french_bing_lexicon <- feel_raw %>%
+    select(word, polarity) %>%
+    filter(!is.na(polarity) & polarity != "") %>%
+    rename(sentiment = polarity) %>%
+    mutate(sentiment = tolower(sentiment)) %>%
+    filter(sentiment %in% c("positive", "negative"))
+  
+  cat("✓ Lexique BING (polarité) créé:\n")
+  cat("  - Mots positifs:", sum(french_bing_lexicon$sentiment == "positive"), "\n")
+  cat("  - Mots négatifs:", sum(french_bing_lexicon$sentiment == "negative"), "\n\n")
+} else {
+  cat("⚠️ Colonne 'polarity' absente. Analyse BING impossible.\n")
+  french_bing_lexicon <- tibble(word = character(), sentiment = character())
+}
 
 # ------------------------------------------------------------------------------
 # 5.2. Préparation de FEEL pour l'Analyse NRC (8 Émotions + 2 Polarités)
@@ -644,92 +564,55 @@ cat("  - Mots négatifs:", sum(french_bing_lexicon$sentiment == "negative"), "\n
 
 cat("--- 5.2. PRÉPARATION POUR ANALYSE NRC (Émotions) ---\n")
 
-# Séparation en deux parties pour éviter le conflit de types
+# Partie 1 : Polarités
+nrc_polarity <- french_bing_lexicon
 
-# Partie 1 : Polarités (character)
-nrc_polarity <- feel_raw %>%
-  select(word, polarity) %>%
-  filter(!is.na(polarity) & polarity != "") %>%
-  rename(sentiment = polarity) %>%
-  mutate(sentiment = tolower(sentiment)) %>%
-  filter(sentiment %in% c("positive", "negative"))
+# Partie 2 : Émotions
+# On pivote les colonnes d'émotion qui sont à 1
+emo_cols_present <- intersect(names(feel_raw), names(emotion_map))
 
-# Partie 2 : Émotions (numeric)
-nrc_emotions <- feel_raw %>%
-  select(word, anger, anticipation, disgust, fear, joy, sadness, surprise, trust) %>%
-  pivot_longer(
-    cols = c(anger, anticipation, disgust, fear, joy, sadness, surprise, trust),
-    names_to = "sentiment",
-    values_to = "value"
-  ) %>%
-  filter(!is.na(value) & value == 1) %>%
-  select(word, sentiment)
-
-# Combinaison des deux parties
-french_nrc_lexicon <- bind_rows(nrc_polarity, nrc_emotions) %>%
-  distinct()
-
-cat("✓ Lexique NRC (émotions) créé:\n")
-emotions_count <- french_nrc_lexicon %>%
-  count(sentiment, name = "n_mots") %>%
-  arrange(desc(n_mots))
-print(emotions_count)
-cat("\n")
+if (length(emo_cols_present) > 0) {
+  nrc_emotions <- feel_raw %>%
+    select(word, all_of(emo_cols_present)) %>%
+    pivot_longer(cols = all_of(emo_cols_present),
+                 names_to = "sentiment",
+                 values_to = "value") %>%
+    filter(value == 1) %>%
+    select(word, sentiment)
+  
+  french_nrc_lexicon <- bind_rows(nrc_polarity, nrc_emotions) %>% distinct()
+  
+  cat("✓ Lexique NRC (émotions) créé.\n\n")
+} else {
+  cat("⚠️ Colonnes d'émotions absentes. Analyse NRC impossible.\n")
+  french_nrc_lexicon <- tibble(word = character(), sentiment = character())
+}
 
 # ------------------------------------------------------------------------------
 # 5.3. Préparation de FEEL pour l'Analyse AFINN (Scores Numériques)
 # ------------------------------------------------------------------------------
 
 cat("--- 5.3. PRÉPARATION POUR ANALYSE AFINN (Scores) ---\n")
-cat("⚠️  FEEL ne contient pas de scores numériques natifs.\n")
-cat("   Création de scores basés sur la polarité et les émotions:\n")
-cat("   - Mots uniquement positifs: +2\n")
-cat("   - Mots uniquement négatifs: -2\n")
-cat("   - Mots avec émotions positives (joy, trust, anticipation): +1 par émotion\n")
-cat("   - Mots avec émotions négatives (anger, fear, disgust, sadness): -1 par émotion\n\n")
 
 # Calcul des scores basés sur FEEL
+# +2/-2 pour polarité, +/-1 pour chaque émotion
 french_afinn_lexicon <- feel_raw %>%
   mutate(
-    # Score de base selon la polarité
     score_polarity = case_when(
-      polarity == "positive" ~ 2,
-      polarity == "negative" ~ -2,
+      "polarity" %in% names(.) & polarity == "positive" ~ 2,
+      "polarity" %in% names(.) & polarity == "negative" ~ -2,
       TRUE ~ 0
     ),
-    # Score basé sur les émotions positives
-    score_positive_emotions = (joy + trust + anticipation),
-    # Score basé sur les émotions négatives
-    score_negative_emotions = -(anger + fear + disgust + sadness),
-    # Score total
+    score_positive_emotions = rowSums(select(., any_of(c("joy", "trust", "anticipation"))), na.rm = TRUE),
+    score_negative_emotions = -rowSums(select(., any_of(c("anger", "fear", "disgust", "sadness"))), na.rm = TRUE),
     value = score_polarity + score_positive_emotions + score_negative_emotions
   ) %>%
   select(word, value) %>%
-  filter(value != 0)  # Garder seulement les mots avec un score non-nul
+  filter(value != 0)
 
-cat("✓ Lexique AFINN (scores) créé:\n")
-cat("  - Mots avec score:", nrow(french_afinn_lexicon), "\n")
-cat("  - Score moyen:", round(mean(french_afinn_lexicon$value), 2), "\n")
-cat("  - Score min:", min(french_afinn_lexicon$value), "\n")
-cat("  - Score max:", max(french_afinn_lexicon$value), "\n")
+cat("✓ Lexique AFINN (scores) créé.\n")
+cat("  - Mots avec score:", nrow(french_afinn_lexicon), "\n\n")
 
-# Distribution des scores
-score_distribution <- french_afinn_lexicon %>%
-  mutate(score_category = case_when(
-    value <= -3 ~ "Très négatif (≤-3)",
-    value == -2 ~ "Négatif (-2)",
-    value == -1 ~ "Légèrement négatif (-1)",
-    value == 1 ~ "Légèrement positif (+1)",
-    value == 2 ~ "Positif (+2)",
-    value >= 3 ~ "Très positif (≥+3)",
-    TRUE ~ "Neutre (0)"
-  )) %>%
-  count(score_category) %>%
-  arrange(desc(n))
-
-cat("\nDistribution des scores:\n")
-print(score_distribution)
-cat("\n")
 
 # ==============================================================================
 # 6. ANALYSE DE SENTIMENT - TYPE BING (Polarité Positive/Négative)
@@ -746,16 +629,10 @@ sentiment_bing <- tokens_clean %>%
   count(word, sentiment, sort = TRUE)
 
 cat("\nTop 10 des mots POSITIFS les plus fréquents:\n")
-sentiment_bing %>%
-  filter(sentiment == "positive") %>%
-  head(10) %>%
-  print()
+sentiment_bing %>% filter(sentiment == "positive") %>% head(10) %>% print()
 
 cat("\nTop 10 des mots NÉGATIFS les plus fréquents:\n")
-sentiment_bing %>%
-  filter(sentiment == "negative") %>%
-  head(10) %>%
-  print()
+sentiment_bing %>% filter(sentiment == "negative") %>% head(10) %>% print()
 
 # Visualisation
 if (nrow(sentiment_bing) > 0) {
@@ -777,18 +654,8 @@ if (nrow(sentiment_bing) > 0) {
   
   print(plot_bing)
 } else {
-  cat("⚠️  Aucun mot trouvé dans le lexique BING\n")
+  cat("⚠️  Aucun mot trouvé dans le lexique BING (données vides ou pas de correspondances)\n")
 }
-
-# Statistiques globales de sentiment
-sentiment_bing_stats <- tokens_clean %>%
-  inner_join(french_bing_lexicon, by = "word") %>%
-  count(sentiment) %>%
-  mutate(proportion = n / sum(n) * 100)
-
-cat("\n\nRépartition globale des sentiments:\n")
-print(sentiment_bing_stats)
-cat("\n")
 
 # ==============================================================================
 # 7. ANALYSE DE SENTIMENT - TYPE NRC (10 Émotions)
@@ -838,13 +705,15 @@ top_mots_emotions <- tokens_clean %>%
   ungroup() %>%
   arrange(sentiment, desc(n))
 
-for (emotion in unique(top_mots_emotions$sentiment)) {
-  cat(paste0("Émotion: ", toupper(emotion), "\n"))
-  mots <- top_mots_emotions %>%
-    filter(sentiment == emotion) %>%
-    select(word, n)
-  print(mots)
-  cat("\n")
+if(nrow(top_mots_emotions) > 0) {
+  for (emotion in unique(top_mots_emotions$sentiment)) {
+    cat(paste0("Émotion: ", toupper(emotion), "\n"))
+    mots <- top_mots_emotions %>%
+      filter(sentiment == emotion) %>%
+      select(word, n)
+    print(mots)
+    cat("\n")
+  }
 }
 
 # ==============================================================================
@@ -902,20 +771,6 @@ if (nrow(sentiment_afinn_question) > 0) {
   cat("⚠️  Aucun score trouvé dans le lexique AFINN\n")
 }
 
-# Score global
-sentiment_afinn_global <- tokens_clean %>%
-  inner_join(french_afinn_lexicon, by = "word") %>%
-  summarise(
-    N_mots = n(),
-    Score_Total = sum(value),
-    Score_Moyen = mean(value),
-    Score_Median = median(value)
-  )
-
-cat("\n\nScore de sentiment GLOBAL (tous les textes):\n")
-print(sentiment_afinn_global)
-cat("\n")
-
 # ==============================================================================
 # 9. ANALYSE LEXICALE - FRÉQUENCE ET VISUALISATION
 # ==============================================================================
@@ -969,28 +824,6 @@ if (nrow(frequence_mots) > 50) {
   cat("✓ Nuage de mots généré (150 mots max, fréquence min = 3)\n\n")
 } else {
   cat("⚠️  Vocabulaire insuffisant pour générer un nuage de mots\n\n")
-}
-
-# ------------------------------------------------------------------------------
-# 9.3. Fréquence par Question
-# ------------------------------------------------------------------------------
-
-cat("--- 9.3. MOTS CLÉS PAR QUESTION ---\n\n")
-
-frequence_par_question <- tokens_clean %>%
-  count(question, word, sort = TRUE) %>%
-  group_by(question) %>%
-  top_n(10, n) %>%
-  ungroup()
-
-for (q in unique(frequence_par_question$question)) {
-  cat(paste0("Question: ", q, "\n"))
-  freq_q <- frequence_par_question %>%
-    filter(question == q) %>%
-    select(word, n) %>%
-    arrange(desc(n))
-  print(freq_q)
-  cat("\n")
 }
 
 # ==============================================================================
@@ -1071,84 +904,20 @@ K_topics <- 5  # Nombre de sujets à identifier
 cat(paste0("Entraînement du modèle LDA avec ", K_topics, " sujets...\n"))
 cat("(Cette étape peut prendre quelques minutes)\n\n")
 
-lda_model <- LDA(dtm, k = K_topics, control = list(seed = 1234))
-
-# Extraction des termes principaux par sujet
-topics_terms <- terms(lda_model, 10)
-
-cat("SUJETS IDENTIFIÉS (Top 10 mots par sujet):\n\n")
-for (i in 1:K_topics) {
-  cat(paste0("Sujet ", i, ": ", paste(topics_terms[, i], collapse = ", "), "\n"))
-}
-
-# Distribution des sujets dans les documents
-topics_docs <- topics(lda_model)
-topics_distribution <- as.data.frame(table(topics_docs)) %>%
-  rename(Sujet = topics_docs, Nombre_Documents = Freq) %>%
-  mutate(Proportion = round(Nombre_Documents / sum(Nombre_Documents) * 100, 1))
-
-cat("\nDistribution des documents par sujet:\n")
-print(topics_distribution)
-
-cat("\n⚠️  Le protocole mentionne aussi l'utilisation de logiciels spécialisés\n")
-cat("   comme NVivo ou MAXQDA pour une analyse thématique approfondie\n\n")
-
-# ==============================================================================
-# 12. TESTS DE ROBUSTESSE
-# ==============================================================================
-
-cat("================================================================================\n")
-cat("12. TESTS DE ROBUSTESSE\n")
-cat("================================================================================\n\n")
-
-cat("Conformément au protocole, des tests de robustesse doivent être réalisés:\n")
-cat("- Variation des seuils dans les lexiques de sentiment\n")
-cat("- Variation des pondérations\n")
-cat("- Évaluation de la stabilité des résultats\n\n")
-
-# ------------------------------------------------------------------------------
-# 12.1. Sensibilité du Nombre de Sujets (LDA)
-# ------------------------------------------------------------------------------
-
-cat("--- 12.1. SENSIBILITÉ AU NOMBRE DE SUJETS (LDA) ---\n\n")
-
-# Test avec différents nombres de sujets
-k_values <- c(3, 5, 7, 10)
-perplexity_scores <- numeric(length(k_values))
-
-for (i in seq_along(k_values)) {
-  k <- k_values[i]
-  lda_temp <- LDA(dtm, k = k, control = list(seed = 1234))
-  perplexity_scores[i] <- perplexity(lda_temp)
-  cat(paste0("K = ", k, " | Perplexité = ", round(perplexity_scores[i], 2), "\n"))
-}
-
-cat("\nInterprétation: Une perplexité plus faible indique un meilleur ajustement\n\n")
-
-# ------------------------------------------------------------------------------
-# 12.2. Analyse de Sensibilité des Sentiments
-# ------------------------------------------------------------------------------
-
-cat("--- 12.2. ANALYSE DE SENSIBILITÉ (Échelle AFINN/FEEL) ---\n\n")
-
-# Variation du seuil minimum de fréquence
-seuils_freq <- c(1, 3, 5, 10)
-
-for (seuil in seuils_freq) {
-  tokens_filtered <- tokens_clean %>%
-    group_by(word) %>%
-    filter(n() >= seuil) %>%
-    ungroup()
+# Vérification qu'il y a assez de données pour le LDA
+if (dtm$nrow > 0 && dtm$ncol > 0) {
+  lda_model <- LDA(dtm, k = K_topics, control = list(seed = 1234))
   
-  sentiment_test <- tokens_filtered %>%
-    inner_join(french_afinn_lexicon, by = "word") %>%
-    summarise(Score_Moyen = mean(value))
+  # Extraction des termes principaux par sujet
+  topics_terms <- terms(lda_model, 10)
   
-  cat(paste0("Seuil fréquence >= ", seuil, " | Score moyen = ", 
-             round(sentiment_test$Score_Moyen, 3), "\n"))
+  cat("SUJETS IDENTIFIÉS (Top 10 mots par sujet):\n\n")
+  for (i in 1:K_topics) {
+    cat(paste0("Sujet ", i, ": ", paste(topics_terms[, i], collapse = ", "), "\n"))
+  }
+} else {
+  cat("⚠️ Pas assez de données pour le modèle LDA.\n")
 }
-
-cat("\n")
 
 # ==============================================================================
 # 13. GÉNÉRATION DES RAPPORTS ET EXPORTS
@@ -1183,15 +952,15 @@ cat("✓ Fichier exporté: resultats_significatifs.csv\n\n")
 cat("--- 13.2. EXPORT DES RÉSULTATS QUALITATIFS ---\n")
 
 # Sentiments BING
-write_csv(sentiment_bing, "resultats_sentiment_bing.csv")
+if(exists("sentiment_bing") && nrow(sentiment_bing) > 0) write_csv(sentiment_bing, "resultats_sentiment_bing.csv")
 cat("✓ Fichier exporté: resultats_sentiment_bing.csv\n")
 
 # Sentiments NRC
-write_csv(sentiment_nrc, "resultats_sentiment_nrc.csv")
+if(exists("sentiment_nrc") && nrow(sentiment_nrc) > 0) write_csv(sentiment_nrc, "resultats_sentiment_nrc.csv")
 cat("✓ Fichier exporté: resultats_sentiment_nrc.csv\n")
 
 # Sentiments AFINN par question
-write_csv(sentiment_afinn_question, "resultats_sentiment_afinn.csv")
+if(exists("sentiment_afinn_question") && nrow(sentiment_afinn_question) > 0) write_csv(sentiment_afinn_question, "resultats_sentiment_afinn.csv")
 cat("✓ Fichier exporté: resultats_sentiment_afinn.csv\n")
 
 # Fréquence des mots
@@ -1199,7 +968,7 @@ write_csv(frequence_mots, "resultats_frequence_mots.csv")
 cat("✓ Fichier exporté: resultats_frequence_mots.csv\n")
 
 # Sujets LDA
-write.csv(topics_terms, "resultats_topics_lda.csv", row.names = TRUE)
+if(exists("topics_terms")) write.csv(topics_terms, "resultats_topics_lda.csv", row.names = TRUE)
 cat("✓ Fichier exporté: resultats_topics_lda.csv\n\n")
 
 # ------------------------------------------------------------------------------
@@ -1230,233 +999,6 @@ if (exists("plot_afinn") && nrow(sentiment_afinn_question) > 0) {
 ggsave("plot_frequence_mots.png", plot_freq, width = 10, height = 6, dpi = 300)
 cat("✓ Graphique exporté: plot_frequence_mots.png\n\n")
 
-# ==============================================================================
-# 14. SYNTHÈSE FINALE ET INTERPRÉTATION
-# ==============================================================================
-
-cat("================================================================================\n")
-cat("14. SYNTHÈSE FINALE - CRITÈRE DE JUGEMENT PRINCIPAL\n")
-cat("================================================================================\n\n")
-
-cat("OBJECTIF PRINCIPAL:\n")
-cat("Créer une perception de la part des professionnels de l'urgence\n")
-cat("sur ce que devrait idéalement être la médecine d'urgence.\n\n")
-
-cat("CRITÈRE DE JUGEMENT PRINCIPAL:\n")
-cat("Agrégation des termes et sentiments majoritaires projetés\n")
-cat("vis-à-vis de la médecine d'urgence idéale.\n\n")
-
-# ------------------------------------------------------------------------------
-# 14.1. Synthèse Quantitative
-# ------------------------------------------------------------------------------
-
-cat("--- 14.1. SYNTHÈSE QUANTITATIVE ---\n\n")
-
-perception_actuelle_specialite <- stats_globales %>%
-  filter(Variable == "Perception_Actu_Specialite") %>%
-  pull(Moyenne)
-
-perception_future_specialite <- stats_globales %>%
-  filter(Variable == "Perception_Fut_Specialite") %>%
-  pull(Moyenne)
-
-perception_actuelle_exercice <- stats_globales %>%
-  filter(Variable == "Perception_Actu_Exercice") %>%
-  pull(Moyenne)
-
-perception_future_exercice <- stats_globales %>%
-  filter(Variable == "Perception_Fut_Exercice") %>%
-  pull(Moyenne)
-
-cat("Perceptions moyennes (échelle 0-10):\n")
-cat(paste0("  - Perception actuelle de la spécialité: ", 
-           round(perception_actuelle_specialite, 2), "/10\n"))
-cat(paste0("  - Perception future de la spécialité: ", 
-           round(perception_future_specialite, 2), "/10\n"))
-cat(paste0("  - Perception actuelle de l'exercice: ", 
-           round(perception_actuelle_exercice, 2), "/10\n"))
-cat(paste0("  - Perception future de l'exercice: ", 
-           round(perception_future_exercice, 2), "/10\n\n"))
-
-# Évolution des perceptions
-evolution_specialite <- perception_future_specialite - perception_actuelle_specialite
-evolution_exercice <- perception_future_exercice - perception_actuelle_exercice
-
-cat("Évolution des perceptions:\n")
-cat(paste0("  - Spécialité: ", ifelse(evolution_specialite > 0, "+", ""),
-           round(evolution_specialite, 2), " points\n"))
-cat(paste0("  - Exercice: ", ifelse(evolution_exercice > 0, "+", ""),
-           round(evolution_exercice, 2), " points\n\n"))
-
-# ------------------------------------------------------------------------------
-# 14.2. Synthèse Qualitative
-# ------------------------------------------------------------------------------
-
-cat("--- 14.2. SYNTHÈSE QUALITATIVE ---\n\n")
-
-# Top 5 mots positifs et négatifs
-if (nrow(sentiment_bing) > 0) {
-  top_positifs <- sentiment_bing %>%
-    filter(sentiment == "positive") %>%
-    head(5) %>%
-    pull(word)
-  
-  top_negatifs <- sentiment_bing %>%
-    filter(sentiment == "negative") %>%
-    head(5) %>%
-    pull(word)
-  
-  cat("Termes majoritaires POSITIFS (BING/FEEL):\n")
-  cat(paste0("  ", paste(top_positifs, collapse = ", "), "\n\n"))
-  
-  cat("Termes majoritaires NÉGATIFS (BING/FEEL):\n")
-  cat(paste0("  ", paste(top_negatifs, collapse = ", "), "\n\n"))
-}
-
-# Émotions dominantes
-if (nrow(sentiment_nrc) > 0) {
-  top_emotions <- sentiment_nrc %>%
-    arrange(desc(n)) %>%
-    head(3) %>%
-    pull(sentiment)
-  
-  cat("Émotions dominantes (NRC/FEEL):\n")
-  for (i in 1:min(3, length(top_emotions))) {
-    cat(paste0("  ", i, ". ", top_emotions[i], "\n"))
-  }
-  cat("\n")
-}
-
-# ------------------------------------------------------------------------------
-# 14.3. Réponse à la Question de Recherche
-# ------------------------------------------------------------------------------
-
-cat("--- 14.3. DÉFINITION DE LA MÉDECINE D'URGENCE IDÉALE ---\n\n")
-
-cat("Sur la base de l'agrégation des données quantitatives et qualitatives,\n")
-cat("la médecine d'urgence idéale selon les professionnels interrogés se caractérise par:\n\n")
-
-if (exists("top_positifs") && length(top_positifs) > 0) {
-  cat("POINTS POSITIFS MAJEURS (analyse qualitative FEEL):\n")
-  for (i in 1:min(5, length(top_positifs))) {
-    cat(paste0("  • ", top_positifs[i], "\n"))
-  }
-  cat("\n")
-}
-
-if (exists("top_negatifs") && length(top_negatifs) > 0) {
-  cat("POINTS DE PRÉOCCUPATION (analyse qualitative FEEL):\n")
-  for (i in 1:min(5, length(top_negatifs))) {
-    cat(paste0("  • ", top_negatifs[i], "\n"))
-  }
-  cat("\n")
-}
-
-cat("PERCEPTIONS QUANTITATIVES:\n")
-cat(paste0("  • Perception actuelle de la spécialité: ", 
-           round(perception_actuelle_specialite, 1), "/10\n"))
-cat(paste0("  • Perspective d'évolution: ", 
-           ifelse(evolution_specialite > 0, "positive", "négative"), 
-           " (", ifelse(evolution_specialite > 0, "+", ""),
-           round(evolution_specialite, 1), " points)\n\n"))
-
-# ------------------------------------------------------------------------------
-# 14.4. Différences par Sous-Populations
-# ------------------------------------------------------------------------------
-
-cat("--- 14.4. DIFFÉRENCES PAR SOUS-POPULATIONS ---\n\n")
-
-if (nrow(resultats_significatifs) > 0) {
-  cat("Différences significatives identifiées selon:\n")
-  sous_pops_significatives <- unique(resultats_significatifs$Group_Var)
-  for (pop in sous_pops_significatives) {
-    n_diffs <- sum(resultats_significatifs$Group_Var == pop)
-    cat(paste0("  • ", pop, " (", n_diffs, " différence(s) significative(s))\n"))
-  }
-} else {
-  cat("Aucune différence significative entre sous-populations détectée.\n")
-}
-
-cat("\n")
-
-# ==============================================================================
-# 15. CONFORMITÉ AU PROTOCOLE ET RECOMMANDATIONS
-# ==============================================================================
-
-cat("================================================================================\n")
-cat("15. CONFORMITÉ AU PROTOCOLE ET RECOMMANDATIONS\n")
-cat("================================================================================\n\n")
-
-cat("✓ Analyses réalisées conformément au protocole PERCEPT'urg:\n")
-cat("  [✓] Analyse quantitative (échelles de Likert 0-10)\n")
-cat("  [✓] Statistiques descriptives (Moyenne, ET, IC95%)\n")
-cat("  [✓] Tests inférentiels (t-Student, Mann-Whitney, ANOVA, Kruskal-Wallis)\n")
-cat("  [✓] Analyse qualitative (NLP avec lexique FEEL)\n")
-cat("  [✓] Analyse BING (polarité positive/négative via FEEL)\n")
-cat("  [✓] Analyse NRC (10 émotions via FEEL)\n")
-cat("  [✓] Analyse AFINN (scores numériques calculés via FEEL)\n")
-cat("  [✓] Analyse lexicale (fréquence, nuages de mots)\n")
-cat("  [✓] Topic modeling (LDA)\n")
-cat("  [✓] Tests de robustesse\n")
-cat("  [✓] Comparaisons par sous-populations\n\n")
-
-cat("📚 LEXIQUE UTILISÉ:\n")
-cat("  FEEL (French Expanded Emotion Lexicon)\n")
-cat("  - Source: LIRMM, Université de Montpellier\n")
-cat("  - Référence: Abdaoui et al. (2017), Language Resources and Evaluation\n")
-cat("  - Contenu: ", nrow(feel_raw), " mots français\n")
-cat("  - Format: 2 polarités + 8 émotions (modèle d'Ekman)\n")
-cat("  - URL: http://advanse.lirmm.fr/feel.php\n\n")
-
-cat("⚠️  Compléments recommandés:\n")
-cat("  [ ] Vectorisation avancée (Word2Vec, Doc2Vec)\n")
-cat("  [ ] Gestion complète des négations (modèles contextuels)\n")
-cat("  [ ] Analyse thématique NVivo/MAXQDA\n")
-cat("  [ ] Calibration sur corpus témoin (1984)\n")
-cat("  [ ] Conformité TRIPOD-AI pour publication\n\n")
-
-cat("📊 Fichiers de résultats générés:\n")
-cat("  - resultats_stats_globales.csv\n")
-cat("  - resultats_comparaisons.csv\n")
-cat("  - resultats_significatifs.csv\n")
-cat("  - resultats_sentiment_bing.csv\n")
-cat("  - resultats_sentiment_nrc.csv\n")
-cat("  - resultats_sentiment_afinn.csv\n")
-cat("  - resultats_frequence_mots.csv\n")
-cat("  - resultats_topics_lda.csv\n")
-cat("  - plot_perceptions.png\n")
-cat("  - plot_sentiment_bing.png\n")
-cat("  - plot_sentiment_nrc.png\n")
-cat("  - plot_sentiment_afinn.png\n")
-cat("  - plot_frequence_mots.png\n\n")
-
-cat("📝 CITATION POUR LE MANUSCRIT:\n\n")
-cat('L\'analyse de sentiment a utilisé le lexique FEEL (French Expanded Emotion Lexicon,\n')
-cat('Abdaoui et al., 2017) contenant plus de 14 000 mots français annotés selon\n')
-cat('la polarité (positive/négative) et 8 émotions de base (colère, anticipation,\n')
-cat('dégoût, peur, joie, tristesse, surprise, confiance). Ce lexique unique a permis\n')
-cat('de réaliser simultanément:\n')
-cat('- L\'analyse de polarité (équivalent BING)\n')
-cat('- L\'analyse émotionnelle à 10 dimensions (équivalent NRC)\n')
-cat('- L\'analyse de sentiment avec scores numériques (équivalent AFINN)\n\n')
-
-cat("📚 Référence bibliographique:\n")
-cat("Abdaoui, A., Azé, J., Bringay, S., & Poncelet, P. (2017).\n")
-cat("FEEL: a French expanded emotion lexicon.\n")
-cat("Language Resources and Evaluation, 51(3), 833-855.\n")
-cat("https://doi.org/10.1007/s10579-016-9364-5\n\n")
-
 cat("================================================================================\n")
 cat("ANALYSE TERMINÉE\n")
 cat("================================================================================\n\n")
-
-cat("Pour toute question sur la méthodologie ou l'interprétation des résultats,\n")
-cat("veuillez consulter le protocole expérimental PERCEPT'urg.\n\n")
-
-cat("Prochaines étapes suggérées:\n")
-cat("1. Vérifier la qualité des résultats\n")
-cat("2. Réaliser la double lecture humaine\n")
-cat("3. Rédiger le manuscrit pour publication\n")
-cat("4. Préparer les présentations (Urgences 2026, EUSEM)\n\n")
-
-# Fin du script
