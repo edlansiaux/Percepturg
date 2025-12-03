@@ -14,18 +14,19 @@
 #                    "text2vec", "stopwords", "SnowballC", "grid", "gridExtra"))
 
 # Chargement des librairies
-library(tidyverse)    # Manipulation de données
+library(tidyverse)    # Manipulation de données (charge ggplot2)
 library(readr)        # Import CSV
 library(psych)        # Statistiques descriptives et IC
 library(rstatix)      # Tests statistiques
 library(car)          # Tests de normalité et homogénéité
 library(tidytext)     # Analyse de texte (NLP)
-library(tm)           # Traitement de texte
+library(tm)           # Traitement de texte (Attention: masque annotate de ggplot2)
 library(wordcloud)    # Nuages de mots
 library(ggplot2)      # Visualisation
 library(stopwords)    # Mots vides français
 library(SnowballC)    # Stemming
 library(gridExtra)    # Arrangements graphiques
+library(topicmodels)  # LDA topic modeling
 
 cat("================================================================================\n")
 cat("ÉTUDE PERCEPT'URG - Analyse de la perception de la médecine d'urgence\n")
@@ -105,6 +106,139 @@ data <- data %>%
 
 cat("✓ Données nettoyées:", nrow(data), "réponses consentantes\n")
 cat("✓ Professions représentées:", nlevels(data$Fonction), "catégories\n\n")
+
+# ==============================================================================
+# 2.2. ANALYSE DESCRIPTIVE DE LA POPULATION (DÉMOGRAPHIE)
+# ==============================================================================
+
+cat("================================================================================\n")
+cat("2.2. ANALYSE DESCRIPTIVE DE LA POPULATION (DÉMOGRAPHIE)\n")
+cat("================================================================================\n\n")
+
+# ------------------------------------------------------------------------------
+# A. Variables Qualitatives (Effectifs et Pourcentages)
+# ------------------------------------------------------------------------------
+# Fonction générique pour l'analyse univariée des variables catégorielles
+analyser_demographie <- function(data, variable, nom_variable) {
+  data %>%
+    filter(!is.na(!!sym(variable))) %>%
+    count(!!sym(variable)) %>%
+    mutate(
+      Variable = nom_variable,
+      Proportion = round(n / sum(n) * 100, 2),
+      Label = paste0(n, " (", Proportion, "%)")
+    ) %>%
+    rename(Categorie = !!sym(variable)) %>%
+    select(Variable, Categorie, n, Proportion, Label) %>%
+    arrange(desc(n))
+}
+
+# Analyse des variables démographiques clés
+demo_sexe <- analyser_demographie(data, "Sexe", "Sexe")
+demo_age <- analyser_demographie(data, "Tranche_Age", "Tranche d'âge")
+demo_fonction <- analyser_demographie(data, "Fonction", "Profession")
+demo_structure <- analyser_demographie(data, "Type_Structure", "Type de Structure")
+
+# Fusion pour créer le "Tableau 1"
+tableau_demographique <- bind_rows(demo_sexe, demo_age, demo_fonction, demo_structure)
+
+cat("--- RÉSUMÉ DÉMOGRAPHIQUE ---\n")
+print(tableau_demographique)
+cat("\n")
+
+# Export du tableau démographique
+write_csv(tableau_demographique, "resultats_demographie_population.csv")
+cat("✓ Tableau démographique exporté : resultats_demographie_population.csv\n")
+
+# ------------------------------------------------------------------------------
+# B. Variable Quantitative : Expérience aux Urgences
+# ------------------------------------------------------------------------------
+# Calcul de la moyenne, écart-type, médiane et IC95% pour l'expérience
+stats_experience <- data %>%
+  filter(!is.na(Experience_Urgence)) %>%
+  summarise(
+    Variable = "Années d'expérience",
+    N = n(),
+    Moyenne = mean(Experience_Urgence, na.rm = TRUE),
+    ET = sd(Experience_Urgence, na.rm = TRUE),
+    Mediane = median(Experience_Urgence, na.rm = TRUE),
+    Min = min(Experience_Urgence, na.rm = TRUE),
+    Max = max(Experience_Urgence, na.rm = TRUE),
+    Q1 = quantile(Experience_Urgence, 0.25, na.rm = TRUE),
+    Q3 = quantile(Experience_Urgence, 0.75, na.rm = TRUE),
+    Erreur_Standard = ET / sqrt(N),
+    IC95_Inf = Moyenne - qt(0.975, df = N - 1) * Erreur_Standard,
+    IC95_Sup = Moyenne + qt(0.975, df = N - 1) * Erreur_Standard
+  ) %>%
+  mutate(across(where(is.numeric), ~round(., 2)))
+
+cat("\n--- EXPÉRIENCE PROFESSIONNELLE ---\n")
+print(stats_experience)
+
+# Export des stats d'expérience
+write_csv(stats_experience, "resultats_stats_experience.csv")
+
+# ------------------------------------------------------------------------------
+# C. Visualisations de la Population
+# ------------------------------------------------------------------------------
+
+# 1. Graphique : Répartition par Profession
+if(nrow(demo_fonction) > 0) {
+  plot_fonction <- data %>%
+    filter(!is.na(Fonction)) %>%
+    count(Fonction) %>%
+    mutate(Fonction = fct_reorder(Fonction, n)) %>%
+    ggplot(aes(x = Fonction, y = n, fill = Fonction)) +
+    geom_col(show.legend = FALSE) +
+    geom_text(aes(label = n), hjust = -0.2) +
+    coord_flip() +
+    labs(title = "Répartition des Répondants par Profession",
+         subtitle = paste0("Population totale : N = ", nrow(data)),
+         x = NULL, y = "Nombre de répondants") +
+    theme_minimal() +
+    theme(plot.title = element_text(face = "bold"),
+          axis.text.y = element_text(size = 9)) +
+    scale_fill_brewer(palette = "Set3")
+  
+  ggsave("plot_pop_fonction.png", plot_fonction, width = 10, height = 6, dpi = 300)
+}
+
+# 2. Graphique : Répartition par Âge et Sexe
+if(nrow(demo_age) > 0 && nrow(demo_sexe) > 0) {
+  plot_age_sexe <- data %>%
+    filter(!is.na(Tranche_Age) & !is.na(Sexe)) %>%
+    count(Tranche_Age, Sexe) %>%
+    ggplot(aes(x = Tranche_Age, y = n, fill = Sexe)) +
+    geom_col(position = "dodge") +
+    labs(title = "Répartition par Âge et Sexe",
+         x = "Tranche d'âge", y = "Effectif") +
+    theme_minimal() +
+    theme(plot.title = element_text(face = "bold"),
+          axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_brewer(palette = "Set1")
+  
+  ggsave("plot_pop_age_sexe.png", plot_age_sexe, width = 8, height = 6, dpi = 300)
+}
+
+# 3. Graphique : Distribution de l'Expérience
+if(nrow(stats_experience) > 0) {
+  # CORRECTION : Utilisation explicite de ggplot2::annotate pour éviter le conflit avec NLP/tm
+  plot_experience <- ggplot(data, aes(x = Experience_Urgence)) +
+    geom_histogram(binwidth = 2, fill = "steelblue", color = "white", alpha = 0.8) +
+    geom_vline(aes(xintercept = mean(Experience_Urgence, na.rm = TRUE)), 
+               color = "red", linetype = "dashed", linewidth = 1) +
+    ggplot2::annotate("text", x = mean(data$Experience_Urgence, na.rm=TRUE) + 2, 
+             y = 5, label = "Moyenne", color = "red") +
+    labs(title = "Distribution de l'Expérience Professionnelle",
+         subtitle = "Années de participation à la médecine d'urgence",
+         x = "Années", y = "Fréquence") +
+    theme_minimal()
+  
+  ggsave("plot_pop_experience.png", plot_experience, width = 8, height = 5, dpi = 300)
+}
+
+cat("\n✓ Graphiques de population générés et exportés.\n\n")
+
 
 # ==============================================================================
 # 3. ANALYSE QUANTITATIVE - CRITÈRE DE JUGEMENT PRINCIPAL
@@ -880,13 +1014,6 @@ cat("11. ANALYSE THÉMATIQUE - TOPIC MODELING (LDA)\n")
 cat("================================================================================\n\n")
 
 cat("--- 11.1. MODÉLISATION DE SUJETS (Latent Dirichlet Allocation) ---\n\n")
-
-# Installation et chargement du package topicmodels
-if (!require("topicmodels", quietly = TRUE)) {
-  cat("Installation du package 'topicmodels'...\n")
-  install.packages("topicmodels")
-  library(topicmodels)
-}
 
 # Création de la matrice Document-Terme (DTM)
 dtm <- tokens_clean %>%
