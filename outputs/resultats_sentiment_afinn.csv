@@ -1,0 +1,15 @@
+question,N_reponses,Score_Moyen,ET_Score,Score_Min,Score_Max
+Lieu_Travail_Ideal,118,7.28,7.43,-7,41
+Structure_Ideale,127,6.23,7.44,-9,49
+Service_Urgence_Ideal,121,5.88,7.58,-13,48
+Conditions_Ideales,133,5.42,8.19,-19,44
+SMUR_Ideal,107,4.97,6.72,-9,39
+Commentaire_Libre,41,4.8,9.12,-16,36
+SAMU_SAS_Ideal,112,4.76,5.91,-7,28
+Heures_Hebdo_Ideales,58,3,3.79,-6,17
+Nuitees_Hebdo_Ideales,59,2.24,4.41,-6,20
+Medecine_Urgence_Soins,104,0.86,5.35,-15,14
+Situation_Non_Urgente_Def,123,0.73,5.94,-14,42
+Medecine_Urgence_Patients,120,0.41,6.82,-13,36
+Situation_Non_Programmee_Def,103,0.35,5.17,-16,12
+Situation_Urgence_Def,131,-0.89,5.85,-21,12

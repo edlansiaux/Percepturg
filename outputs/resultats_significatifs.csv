@@ -1,0 +1,3 @@
+Score_Var,Group_Var,Test,Statistique,p_value,Significatif
+Perception_Actu_Exercice,Tranche_Age,Kruskal-Wallis,12.780621473275891,0.0124,Oui
+Perception_Actu_Specialite,Tranche_Age,Kruskal-Wallis,9.70871515488546,0.0456,Oui
